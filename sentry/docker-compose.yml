@@ -1,0 +1,74 @@
+version: '2'
+networks:
+  ul:
+    external: true
+volumes:
+  sentry-files:
+# Generate Key: 
+# docker run --rm sentry config generate-secret-key
+# Update DB:
+# docker-compose run --rm sentry sentry upgrade
+services: 
+  sentry:
+    image: sentry:8.22
+    mem_limit: 2GB
+    volumes:
+      - sentry-files:/var/lib/sentry/files
+      - ./sentry.conf.py:/etc/sentry/sentry.conf.py
+    networks:
+      - ul
+    env_file: .env
+    ports:
+      - 9000:9000
+    depends_on:
+      - postgres
+      - redis
+
+  sentry-cron:
+    image: sentry:8.22
+    entrypoint: 'sentry run cron'
+    mem_limit: 512MB
+    volumes:
+      - sentry-files:/var/lib/sentry/files
+    networks:
+      - ul
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+  sentry-worker:
+    image: sentry:8.22
+    entrypoint: 'sentry run worker --loglevel DEBUG'
+    mem_limit: 512MB
+    env_file: .env
+    volumes:
+      - sentry-files:/var/lib/sentry/files
+    networks:
+      - ul
+    environment:
+      - C_FORCE_ROOT=1
+    depends_on:
+      - postgres
+      - redis
+      - sentry
+
+  postgres:
+    image: postgres
+    mem_limit: 256MB
+    env_file: .env
+    volumes:
+      - ./data/pgdata:/var/lib/postgresql/data
+    networks:
+      - ul
+    environment:
+      - "POSTGRES_USER=${SENTRY_DB_USER}"
+      - "POSTGRES_PASSWORD=${SENTRY_DB_PASSWORD}"
+
+  redis:
+    image: redis
+    mem_limit: 256MB
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - ul
